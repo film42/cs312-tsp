@@ -27,14 +27,14 @@ namespace TSP
             this.total_size = 0;
         }
 
-        public bool IsEmpty()
+        public bool IsEmpty
         {
-            return (total_size == 0);
+          get { return (total_size == 0); }
         }
 
         public TSPState Dequeue()
         {
-            if (IsEmpty())
+            if (IsEmpty)
             {
                 throw new Exception("Please check that priorityQueue is not empty before dequeing");
             }
@@ -65,24 +65,18 @@ namespace TSP
             total_size++;
         }
 
-        //public void Prune(double cost)
-        //{
-        //    for (int i = 0; i < storage.Values.Count; i++)
-        //    {
-        //        Queue q = storage[0];
-        //        // Build new Queue
-        //        Queue newQ = new Queue();
-        //        foreach (TSPState state in q)
-        //        {
-        //            // Save the values that don't need to be pruned
-        //            if (state.Cost < cost)
-        //            {
-        //                newQ.Enqueue(state);
-        //            }
-        //        }
-        //        q =
-        //        }
-        //}
+        public void Prune(double pruneLimit)
+        {
+          for(int i = 0; i < storage.Keys.Count; i++) {
+            var key = storage.Keys.ElementAt(i);
+            if (key >= pruneLimit) {
+              // Decrement the PQ size
+              total_size -= storage[key].Count;
+              // Remove the Queue that's too largee
+              storage.Remove(key);
+            }
+          }
+        }
 
         // TODO: Make me optimized
         public bool Contains(TSPState state) 
@@ -97,5 +91,6 @@ namespace TSP
                 return storage[prio].Contains(state);
             }
         }
+
     }
 }

@@ -285,7 +285,7 @@ namespace TSP
             var initState = new TSPState(matrix, bound, cost, depth, pathSoFar, cityIndex);
 
             // Enqueue
-            PQ.Enqueue(initState);
+            AddToAgenda(initState);
 
             //Implement Timer
             //sixtySecondTimer = new System.Timers.Timer(60000);
@@ -320,7 +320,7 @@ namespace TSP
 
         private void BranchAndBoundEngine(double startBound)
         {
-            while (!PQ.IsEmpty() && BSSF.costOfRoute() != startBound) {
+            while (!PQ.IsEmpty && BSSF.costOfRoute() != startBound) {
                 TSPState state = PQ.Dequeue();
 
                 // Now we're done
@@ -328,8 +328,10 @@ namespace TSP
                     break;
 
                 // Test for solution
-                if (IsSolution(state)) 
+                if (IsSolution(state)) {
                     SaveSolution(state);
+                    PQ.Prune(state.Priority());
+                }
                 // Otherwise we generate states
                 else
                 {
@@ -337,7 +339,7 @@ namespace TSP
                     StateExpansion(state);
                 }
             }
-            if (PQ.IsEmpty())
+            if (PQ.IsEmpty)
                 Console.WriteLine("Empty Queue");
             else
                 Console.WriteLine("BSSF = startBound");
@@ -389,6 +391,19 @@ namespace TSP
 
         #region Branch and Bound
         private PriorityQueue PQ = new PriorityQueue();
+        //private AltPQ<double, TSPState> PQ = new AltPQ<double, TSPState>();
+
+        private bool InAgenda(TSPState state) {
+          //double prio = state.Priority();
+          //var kvp = new KeyValuePair<double, TSPState>(prio, state);
+          //return PQ.Contains(kvp);
+          return PQ.Contains(state);
+        }
+
+        private void AddToAgenda(TSPState state) {
+          //PQ.Enqueue(state.Priority(), state);
+          PQ.Enqueue(state);
+        }
 
 
         public void StateExpansion(TSPState state) 
@@ -399,10 +414,10 @@ namespace TSP
             // Iterate
             foreach (TSPState child in state.Children)
             {
-                if (!state.IsPathSoFar(child.City) && !PQ.Contains(child))
+                if (!state.IsPathSoFar(child.City) && !InAgenda(child))
                 {
                     // Enqueue will look for priority
-                    PQ.Enqueue(child);
+                    AddToAgenda(child);
                 }
                 else
                 {
@@ -569,8 +584,8 @@ namespace TSP
             //}
             // TODO: MAKE SURE THIS ISNT TERRIBLE
             // If columns are not reduced, reduce further
-            if (!IsMatrixReduced(matrix))
-            {
+            //if (!IsMatrixReduced(matrix))
+            //{
                 for (int col = 0; col < Cities.Length; col++)
                 {
 
@@ -589,7 +604,7 @@ namespace TSP
                         matrix = ReduceCostMatrixCol(matrix, minRowIndex, col);
                     }
                 }
-            }
+            // }
 //////////////Test Column Reduction
             //for (int i = 0; i < matrix.GetLength(0); i++)
             //{
