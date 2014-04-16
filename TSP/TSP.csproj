@@ -61,7 +61,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AltPQ.cs" />
     <Compile Include="City.cs" />
     <Compile Include="PriorityQueue.cs" />
     <Compile Include="ProblemAndSolver.cs" />

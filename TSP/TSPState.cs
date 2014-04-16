@@ -6,76 +6,80 @@ namespace TSP
 {
     class TSPState
     {
-        double[,] _matrix;
-        private double _cost;
-        private double _bound;
-        private int _depth;
-        private List<TSPState> _children;
-        private List<int> _pathSoFar;
-        private int _cityIndex;
+        private double bound;
+        private List<int> childList;
+        private double[,] matrix;
+        private List<int> pathSoFar;
+        private double cost;
+        private int city;
+        private int treeDepth;
+        private bool isSolution;
 
-        public TSPState(double[,] matrix, double bound, double cost, int depth, List<int> pathSoFar, int cityIndex)
+        public TSPState(double Bound, List <int> ChildList, double[,] Matrix, List<int> PathSoFar,
+                        double Cost, int City, int TreeDepth)
         {
-            _matrix = matrix;
-            _bound = bound;
-            _cost = cost;
-            _depth = depth;
-            _pathSoFar = pathSoFar;
-            _cityIndex = cityIndex;
+            bound = Bound;
+            childList = ChildList;
+            matrix = Matrix;
+            pathSoFar = PathSoFar;
+            cost = Cost;
+            city = City;
+            treeDepth = TreeDepth;
 
-            // Setup state class
-            _children = new List<TSPState>();
+            if (childList.Count == 0)
+                isSolution = true;
+            else
+                isSolution = false;
+
+            
         }
 
         public double Bound
         {
-            get { return _bound; }
+            get { return bound; }
+            set { bound = value; }
         }
 
-        public int Depth
+        public List<int> ChildList
         {
-            get { return _depth; }
-        }
-
-        public int City
-        {
-            get { return _cityIndex; }
-        }
-
-        public List<TSPState> Children
-        {
-            get { return _children; }
-        }
-
-        public double Cost
-        {
-            get { return _cost; }
-        }
-
-        public List<int> PathSoFar
-        {
-            get { return _pathSoFar; }
+            get { return childList; }
+            set { childList = value; }
         }
 
         public double[,] Matrix
         {
-            get { return _matrix; }
+            get { return matrix; }
+            set { matrix = value; }
         }
 
-        public double Priority()
+        public List<int> PathSoFar
         {
-            return Cost + Bound;
+            get { return pathSoFar; }
+            set { pathSoFar = value; }
         }
 
-        public bool IsPathSoFar(int childCity)
+        public double Cost
         {
-            return PathSoFar.Contains(childCity);
+            get { return cost; }
+            set { cost = value; }
         }
 
-        public void AddChild(TSPState state)
+        public int City
         {
-            Children.Add(state);
+            get { return city; }
+            set { city = value; }
         }
 
+        public int TreeDepth
+        {
+            get { return treeDepth; }
+            set { treeDepth = value; }
+        }
+
+        public Boolean IsSolution
+        {
+            get { return isSolution; }
+            set { isSolution = value; }
+        }
     }
 }

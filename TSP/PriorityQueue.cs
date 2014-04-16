@@ -1,21 +1,11 @@
-﻿/*
- * This code implements priority queue which uses min-heap as underlying storage
- * 
- * Copyright (C) 2010 Alexey Kurakin
- * www.avk.name
- * alexey[ at ]kurakin.me
- */
-
-using System;
-using System.Collections;
+﻿using System;
 using System.Collections.Generic;
+using System.Collections;
 using System.Linq;
+using System.Text;
 
 namespace TSP
 {
-    //
-    // CREDIT: http://stackoverflow.com/a/4994931/1457934
-    //
     class PriorityQueue
     {
         int total_size;
@@ -27,70 +17,72 @@ namespace TSP
             this.total_size = 0;
         }
 
-        public bool IsEmpty
+        public int size
         {
-          get { return (total_size == 0); }
+            get { return total_size; }
+        }
+
+        public bool IsEmpty()
+        {
+            // Check if empty: based on total_size because keys can have multiple states
+            return (total_size == 0);
         }
 
         public TSPState Dequeue()
         {
-            if (IsEmpty)
+            if (IsEmpty())
             {
                 throw new Exception("Please check that priorityQueue is not empty before dequeing");
             }
             else
             {
+                // Get first item from the sorted dictionary
                 var kv = storage.First();
+                // Get the Queue from the val
                 Queue q = kv.Value;
+                // Then grab the first item from it
                 TSPState deq = (TSPState)q.Dequeue();
-
+                
+                // Remove if now empty
                 if (q.Count == 0)
                     storage.Remove(kv.Key);
-
+                
+                // Decrement the total size
                 total_size--;
-
+                
+                // Return the state that's been dequeued
                 return deq;
             }
         }
 
-        public void Enqueue(TSPState item)
+        public void Enqueue(TSPState item, double prio)
         {
-            double prio = item.Priority();
-
+            // Check if key prio exists
             if (!storage.ContainsKey(prio))
             {
+                // Add a new queue for key prio
                 storage.Add(prio, new Queue());
             }
+            // Enqueue state at prio in queue
             storage[prio].Enqueue(item);
+            // Inc the total size of the agenda
             total_size++;
         }
 
-        public void Prune(double pruneLimit)
+        public bool Contains(TSPState state)
         {
-          for(int i = 0; i < storage.Keys.Count; i++) {
-            var key = storage.Keys.ElementAt(i);
-            if (key >= pruneLimit) {
-              // Decrement the PQ size
-              total_size -= storage[key].Count;
-              // Remove the Queue that's too largee
-              storage.Remove(key);
-            }
-          }
-        }
-
-        // TODO: Make me optimized
-        public bool Contains(TSPState state) 
-        {
-            double prio = state.Priority();
+            // Get the state's priority for lookup
+            double prio = state.Bound;
+            // If it doesn't exist, absolutely false
             if (!storage.ContainsKey(prio))
             {
                 return false;
             }
             else
             {
+                // Otherwise run contains on the inner Queue
                 return storage[prio].Contains(state);
             }
         }
-
     }
 }

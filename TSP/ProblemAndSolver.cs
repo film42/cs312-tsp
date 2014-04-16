@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using System.Drawing;
-using System.Threading;
 
 namespace TSP
 {
@@ -67,7 +66,7 @@ namespace TSP
         /// <summary>
         /// best solution so far. 
         /// </summary>
-        private TSPSolution BSSF; 
+        private TSPSolution bssf; 
 
         /// <summary>
         /// how to color various things. 
@@ -133,7 +132,7 @@ namespace TSP
         {
             Cities = new City[_size];
             Route = new ArrayList(_size);
-            BSSF = null; 
+            bssf = null; 
 
             for (int i = 0; i < _size; i++)
                 Cities[i] = new City(rnd.NextDouble(), rnd.NextDouble());
@@ -166,7 +165,7 @@ namespace TSP
         public void GenerateProblem(int size)
         {
             this._size = size;
-            resetData();
+            resetData(); 
         }
 
         /// <summary>
@@ -194,17 +193,17 @@ namespace TSP
             g.DrawString("n(c) means this node is the nth node in the current solution and incurs cost c to travel to the next node.", labelFont, cityBrushStartStyle, new PointF(0F, 0F)); 
 
             // Draw lines
-            if (BSSF != null)
+            if (bssf != null)
             {
                 // make a list of points. 
-                Point[] ps = new Point[BSSF.Route.Count];
+                Point[] ps = new Point[bssf.Route.Count];
                 int index = 0;
-                foreach (City c in BSSF.Route)
+                foreach (City c in bssf.Route)
                 {
-                    if (index < BSSF.Route.Count -1)
-                        g.DrawString(" " + index +"("+c.costToGetTo(BSSF.Route[index+1]as City)+")", labelFont, cityBrushStartStyle, new PointF((float)c.X * width + 3F, (float)c.Y * height));
+                    if (index < bssf.Route.Count -1)
+                        g.DrawString(" " + index +"("+c.costToGetTo(bssf.Route[index+1]as City)+")", labelFont, cityBrushStartStyle, new PointF((float)c.X * width + 3F, (float)c.Y * height));
                     else 
-                        g.DrawString(" " + index +"("+c.costToGetTo(BSSF.Route[0]as City)+")", labelFont, cityBrushStartStyle, new PointF((float)c.X * width + 3F, (float)c.Y * height));
+                        g.DrawString(" " + index +"("+c.costToGetTo(bssf.Route[0]as City)+")", labelFont, cityBrushStartStyle, new PointF((float)c.X * width + 3F, (float)c.Y * height));
                     ps[index++] = new Point((int)(c.X * width) + CITY_ICON_SIZE / 2, (int)(c.Y * height) + CITY_ICON_SIZE / 2);
                 }
 
@@ -232,8 +231,8 @@ namespace TSP
         /// <returns></returns>
         public double costOfBssf ()
         {
-            if (BSSF != null)
-                return (BSSF.costOfRoute());
+            if (bssf != null)
+                return (bssf.costOfRoute());
             else
                 return -1D; 
         }
@@ -243,457 +242,310 @@ namespace TSP
         /// right now it just picks a simple solution. 
         /// </summary>
         /// 
-        private System.Timers.Timer sixtySecondTimer;
-        private Thread tspThread;
-        private DateTime endTime;
+        PriorityQueue PQ;
+        double BSSF;
+        double currBound;
+        List<int> BSSFList;
+        double[] rowMins;
+
         public void solveProblem()
         {
-            int x;
+            // Start off with some var power!
             Route = new ArrayList();
-            // this is the trivial solution. 
-            for (x = 0; x < Cities.Length; x++)
+            double minCost;
+            int minIndex = 0;
+            int currIndex = 0;
+            
+            // Set our BSSF to 0, so we can create a new better one
+            BSSFList = new List<int>();
+            BSSFList.Add(0);
+
+            // Begin with our first city
+            Route.Add(Cities[currIndex]);
+
+            // Use the nearest neighbor greedy algorithm
+            // to find a random (naive) solution
+            while(Route.Count < Cities.Length)
             {
-                Route.Add(Cities[Cities.Length - x - 1]);
+                minCost = double.MaxValue;
+                for(int j = 0; j < Cities.Length; j++)
+                {
+                    if(j != currIndex)
+                        if(!Route.Contains(Cities[j]))
+                        {
+                            double currCost = Cities[currIndex].costToGetTo(Cities[j]);
+                            if(currCost < minCost)
+                            {
+                                minCost = currCost;
+                                minIndex = j;
+                            }
+                        }
+                }
+                // Update the BSSDlist and Route (creating BSSF)
+                currIndex = minIndex;
+                Route.Add(Cities[currIndex]);
+                BSSFList.Add(currIndex);
             }
-            //// call this the best solution so far.  bssf is the route that will be drawn by the Draw method. 
-            BSSF = new TSPSolution(Route);
-            // update the cost of the tour. 
-            Program.MainForm.tbCostOfTour.Text = " " + BSSF.costOfRoute();
-            Console.WriteLine("Initial BSSF: " + BSSF.costOfRoute());
-            // do a refresh. 
-            Program.MainForm.Invalidate();
+            // Save solution
+            bssf = new TSPSolution(Route);
+            BSSF = bssf.costOfRoute();
 
-            //Generate initial cost matrix before we begin the timers
-            var matrix = BuildCostMatrix();
-//Test BuildCostMatrix
-            //for (int i = 0; i < Cities.Length; i++)
-            //{
-            //    for (int j = 0; j < Cities.Length; j++)
-            //        Console.Write(String.Format("{0}\t", matrix[i, j]));
-            //    Console.WriteLine();
-            //}
+            //Build matrix for initial state
+            double[,] initialMatrix = buildInitialMatrix();
 
+            //Get the minimum cost for the remaining cities; kinda like bound 
+            rowMins = getRowMins();
+            
+            //Generate list of children for initial state
+            List<int> initStateChildren = new List<int>();
+            for (int i = 1; i < Cities.Length; i++)
+                initStateChildren.Add(i);
+                                                         
+            //Build initial state                                           
+            TSPState initialState = new TSPState(0, initStateChildren, initialMatrix, new List<int>(), 0, 0, 0);
+            initialState.Bound += boundingFunction(initialState);
 
+            //Set the bound 
+            currBound = initialState.Bound;
 
-            //Generate initial state
-            double bound = BoundaryFunction(matrix, 0);
-            double cost = 0.0;
-            int depth = 0;
-            int cityIndex = 0;
-            var pathSoFar = new List<int>();
-            pathSoFar.Add(0); // Add first city index
-            var initState = new TSPState(matrix, bound, cost, depth, pathSoFar, cityIndex);
+            //Start our PQ and load with init state
+            PQ = new PriorityQueue();
+            PQ.Enqueue(initialState, initialState.Bound);
+            
+            //Run Branch and Bound 
+            branchAndBoundEngine();
 
-            // Enqueue
-            AddToAgenda(initState);
+        }
 
-            //Implement Timer
-            //sixtySecondTimer = new System.Timers.Timer(60000);
-            //sixtySecondTimer.Elapsed += new System.Timers.ElapsedEventHandler(timeout);
-            //sixtySecondTimer.AutoReset = false;
-
-            ////Start a new thread
-            //tspThread = new Thread(new ThreadStart(BranchAndBoundEngine));
-            //tspThread.Start();
-            //while (!tspThread.IsAlive) ;
-            //sixtySecondTimer.Enabled = true;
+        DateTime endTime;
+        
+        public void branchAndBoundEngine()
+        {
+            // Start the stop watch
             DateTime startTime = DateTime.Now;
             endTime = startTime.AddSeconds(60);
-            BranchAndBoundEngine(bound);
-            //if(sixtySecondTimer.Enabled)
-            //{
-            //    //Optimal solution found in less than sixty seconds
-            //}
-            //else
-            //{
-            //    //Optimal solution not found, return BSSF
-            //}
             
-            //tspThread.Join();
+            // Run until the PQ is empty, we find an optimal solution, or time runs out
+            while(!PQ.IsEmpty() && DateTime.Now < endTime && BSSF > currBound)
+            {
+                // Get a state from the PQ
+                TSPState state = PQ.Dequeue();
+                // Check to see if the state is worth evaluating
+                if(state.Bound < BSSF)
+                {
+                    // Generate the states children and iterate
+                    List<TSPState> children = generateChildren(state);
+                    foreach(TSPState child in children)
+                    {
+                        // If the bound is worth investigating...
+                        if(child.Bound < bssf.costOfRoute())
+                        {
+                            // Check for a solution and save
+                            if(child.IsSolution && child.Cost < BSSF)
+                            {
+                                // Save solution
+                                BSSF = child.Cost;
+                                BSSFList = child.PathSoFar;
+                            }
+                            // Otherwise assign the state's bound and Enqueue
+                            else
+                            {
+                                double bound = child.Bound;
+                                // Our bound of min cost path to destination + state bound
+                                foreach (int childIndex in child.ChildList)
+                                    bound += rowMins[childIndex];
+                                PQ.Enqueue(child, bound);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            //
+            // END BRANCH AND BOUND
+            //  
 
-            // update the cost of the tour. 
-            Program.MainForm.tbCostOfTour.Text = " (Ours) " + BSSF.costOfRoute();
-            Program.MainForm.tbElapsedTime.Text = " (Ours) " + (DateTime.Now - startTime);
+            // Clear the route
+            Route.Clear();
+            // Save the BSSF route
+            for (int i = 0; i < BSSFList.Count; i++)
+                Route.Add(Cities[BSSFList[i]]);
+            
+            // Create our soltuion and assign
+            bssf = new TSPSolution(Route);
+            
+            // Draw Results
+            Program.MainForm.tbCostOfTour.Text = " " + bssf.costOfRoute();
+            //Output the Time it took
+            Program.MainForm.tbElapsedTime.Text = " " + (DateTime.Now - startTime);
             // do a refresh. 
             Program.MainForm.Invalidate();
         }
 
-        private void BranchAndBoundEngine(double startBound)
+        public List<TSPState> generateChildren(TSPState state)
         {
-            while (!PQ.IsEmpty && BSSF.costOfRoute() != startBound) {
-                TSPState state = PQ.Dequeue();
-
-                // Now we're done
-                if (state.Cost >= BSSF.costOfRoute())
-                    break;
-
-                // Test for solution
-                if (IsSolution(state)) {
-                    SaveSolution(state);
-                    PQ.Prune(state.Priority());
-                }
-                // Otherwise we generate states
-                else
-                {
-                    // This is state expansion
-                    StateExpansion(state);
-                }
-            }
-            if (PQ.IsEmpty)
-                Console.WriteLine("Empty Queue");
-            else
-                Console.WriteLine("BSSF = startBound");
-        }
-
-        private void SaveSolution(TSPState state)
-        {
-            // Potential Solution
-            for (int i = 0; i < state.PathSoFar.Count; i++)
+            // Create new state list
+            List<TSPState> children = new List<TSPState>();
+            // Iterate through the current child's children
+            foreach(int child in state.ChildList)
             {
-                // Replace the route with the BSSF
-                Route[i] = Cities[state.PathSoFar[i]];
-            }
+                // Copy values from parent state so we can modify
+                List<int> childList = new List<int>(state.ChildList);
+                List<int> pathSoFar = new List<int>(state.PathSoFar);
+                double cost = Cities[state.City].costToGetTo(Cities[child]);
+                double[,] matrix = (double[,])state.Matrix.Clone();
+                
+                // Remove child from child list
+                childList.Remove(child);
+                // Add the parent state city to the path so far
+                pathSoFar.Add(state.City);
 
-            // Apply the new BSSF
-            BSSF = new TSPSolution(Route);
-            Console.WriteLine(BSSF.costOfRoute());
-        }
-
-        private void timeout(object o, System.Timers.ElapsedEventArgs e)
-        {
-            Console.WriteLine("Time is up!");
-            tspThread.Abort();
-        }
-
-
-        private double[,] BuildCostMatrix()
-        {
-            int matrixSize = Cities.Length;
-            var matrix = new double[matrixSize, matrixSize];
-            // Iterate through graph; assuming totally connected
-            for (int i = 0; i < Cities.Length; i++)
-                for (int j = 0; j < Cities.Length; j++ )
+                // Reduce the matrix
+                for (int j = 0; j <= matrix.GetUpperBound(0); j++)
+                    matrix[j, state.City] = double.MaxValue;
+                
+                // Create a new state
+                TSPState newState = new TSPState(state.Bound + state.Matrix[state.City, child], childList, matrix, pathSoFar, state.Cost + cost, child, state.TreeDepth + 1);
+                // Update the bound
+                newState.Bound += boundingFunction(newState);
+                
+                // Check for a soltuion
+                if(newState.IsSolution)
                 {
-                    // If equal mark as infinity
+                    // Mark state as a solution
+                    newState.Cost += Cities[newState.City].costToGetTo(Cities[0]);
+                    newState.PathSoFar.Add(newState.City);
+                }
+                
+                // Add child to childrens state
+                children.Add(newState);
+            }
+            
+            // Returnt the list for later usage
+            return children;
+        }
+
+        public double[,] buildInitialMatrix()
+        {
+            // Create a matrix
+            double[,] matrix = new double[Cities.Length, Cities.Length];
+            for(int i = 0; i < Cities.Length; i++)
+            {
+                for(int j = 0; j < Cities.Length; j++)
+                {
                     if (i == j)
+                        // Assign infinity if i == j
                         matrix[i, j] = double.MaxValue;
-                    // Otherwise mark real cost
                     else
+                        // Otherwise populate the matrix with real numbers
                         matrix[i, j] = Cities[i].costToGetTo(Cities[j]);
                 }
-            // Matrix is now built; return.
+            }
             return matrix;
         }
 
-
-        #endregion
-
-
-        #region Branch and Bound
-        private PriorityQueue PQ = new PriorityQueue();
-        //private AltPQ<double, TSPState> PQ = new AltPQ<double, TSPState>();
-
-        private bool InAgenda(TSPState state) {
-          //double prio = state.Priority();
-          //var kvp = new KeyValuePair<double, TSPState>(prio, state);
-          //return PQ.Contains(kvp);
-          return PQ.Contains(state);
-        }
-
-        private void AddToAgenda(TSPState state) {
-          //PQ.Enqueue(state.Priority(), state);
-          PQ.Enqueue(state);
-        }
-
-
-        public void StateExpansion(TSPState state) 
+        public double[] getRowMins()
         {
-            // Generate Children of the first state
-            GenerateChildren(state);
-
-            // Iterate
-            foreach (TSPState child in state.Children)
+            // Create an array getting the min cost from cities
+            double[] rowMins = new double[Cities.Length];
+            for (int i = 0; i < Cities.Length; i++)
             {
-                if (!state.IsPathSoFar(child.City) && !InAgenda(child))
+                double rowMin = double.MaxValue;
+                for(int j = 0; j < Cities.Length; j++)
                 {
-                    // Enqueue will look for priority
-                    AddToAgenda(child);
+                    if(i != j)
+                    {
+                        double currCost = Cities[i].costToGetTo(Cities[j]);
+                        if (currCost < rowMin)
+                            rowMin = currCost;
+                    }
+                }
+                rowMins[i] = rowMin;
+            }
+
+            return rowMins;
+        }
+
+        public double boundingFunction(TSPState state)
+        {
+            // Start with 0 vals and the state's matrix
+            double bound = 0;
+            double numRows = 0;
+            double[,] matrix = state.Matrix;
+
+            // Reduce the matrix rows
+            // Create a child city list
+            List<int> childList = new List<int>(state.ChildList);
+            // Add the current city to the list, creating all cities
+            childList.Add(state.City);
+
+            // Iterate through state's 1D col or row
+            for (int i = 0; i < childList.Count; i++)
+            {
+                // Look for the min cost
+                double minCost = double.MaxValue;
+                // Interage through the other state's 1D col or row
+                for(int j = 0; j < state.ChildList.Count; j++)
+                {
+                    // Check if cost is less than min...
+                    if(matrix[childList[i], state.ChildList[j]] < minCost)
+                    {
+                        // Update the min cost
+                        minCost = matrix[childList[i], state.ChildList[j]];
+                    }
+                }
+                
+                // Then once you find min cost and it's not infinity...
+                if (minCost < double.MaxValue)
+                {
+                    // Reduce the matrix
+                    for (int j = 0; j < state.ChildList.Count; j++)
+                        matrix[childList[i], state.ChildList[j]] -= minCost;
+                    // Add the cost to the bound
+                    bound += minCost;
                 }
                 else
-                {
-                    // Optimize: Cache the children we no longer want to use.
-                    // We should some how hash them so we get quick lookup times.
-                    // WE ARE NOT USING THIS SO DELETE
-                    // Console.WriteLine("Child not added");
-                }
+                    // Mark as infinity
+                    numRows++;
             }
-        }
 
-        private void PrintMatrix(double[,] matrix)
-        {
-            Console.WriteLine("************");
-            for (int k = 0; k < Cities.Length; k++)
+            // Reduce the matrix columns
+            for (int i = 0; i < state.ChildList.Count; i++)
             {
-                for (int j = 0; j < Cities.Length; j++)
-                    if(matrix[k,j] < double.MaxValue)
-                        Console.Write(String.Format("{0}\t\t\t\t\t\t\t", matrix[k, j]));
-                    else
-                        Console.Write(String.Format("{0}\t\t", matrix[k, j]));
-
-                Console.WriteLine();
+                // Look for the min cost
+                double minCost = double.MaxValue;
+                // Iterate through each column
+                for(int j = 0; j < childList.Count; j++)
+                {
+                    // Update min cost if the cell's value is less
+                    if (matrix[childList[j], state.ChildList[i]] < minCost)
+                        minCost = matrix[childList[j], state.ChildList[i]];
+                }
+                // Now that we have min cost, see if it is less than infinity
+                if (minCost < double.MaxValue)
+                    // If so, reduce the matrix column
+                    for (int j = 0; j < childList.Count; j++)
+                        matrix[childList[j], state.ChildList[i]] -= minCost;
+                else
+                    // Mark as infinity
+                    numRows++;
             }
-        }
-
-        public void GenerateChildren(TSPState state)
-        {
-            // Iterate through the city index row
-            for (int i = 0; i < Cities.Length; i++)
+            
+            // If entire matrix is infinity
+            if(numRows >= matrix.GetUpperBound(0))
             {
-                // Create child if not infinity
-                if (state.Matrix[state.City, i] < double.MaxValue)
-                {
-                    // 1) already generated path so far
-                    //
-
-                    // Ensure the cost is less than BSSF
-                    double costToChildI = Cities[state.City].costToGetTo(Cities[i]) + state.Cost;
-                    if(costToChildI < BSSF.costOfRoute()) 
-                    {
-                        // Start with the existing Matrix
-                        var matrix = CopyMatrix(state.Matrix);
-                        //Generate initial state
-                        double cost = costToChildI;
-                        int depth = state.Depth + 1;
-                        int cityIndex = i;
-                        var pathSoFar = GenerateNewPathSoFar(state.PathSoFar, i);
-//Print matrix for comparison
-                        //PrintMatrix(matrix); // DEBUG
-
-                        // Now reduce the matrix
-                        // 1) Remove child from matrix: set pos index to infinity and the cols and rows
-                        matrix[state.City, i] = double.MaxValue;
-                        // Set inverse to infinity
-                        matrix[i, state.City] = double.MaxValue;
-                        // Set Col and Inverse row to infinity
-                        for (int row = 0; row < Cities.Length; row++)
-                        {
-                            // Main row
-                            matrix[row, i] = double.MaxValue;
-                            // Parents Row
-                            matrix[state.City, row] = double.MaxValue;
-                        }
-                        
-
-//Test the removal of a child from the matrix
-                        //PrintMatrix(matrix); // DEBUG
-
-
-                        // 2) Then just reduce minrow and mincol
-                        double bound = BoundaryFunction(matrix, state.Bound);
-                        
-
-                       
-                        //PrintMatrix(matrix); // DEBUG
-                        //Console.WriteLine("####################################");
-
-                        var newChild = new TSPState(matrix, bound, cost, depth, pathSoFar, cityIndex);
-
-                        // Add a child to state
-                        state.AddChild(newChild);
-                    }
-                }
+                // Save solution
+                state.IsSolution = true;
+                state.Cost += Cities[1].costToGetTo(Cities[state.City]);
             }
+            // Return 0 if it is a solution
+            if (state.IsSolution)
+                return 0;
+            
+            // Otherwise return the bound as normal
+            return bound;
         }
 
-        private double[,] CopyMatrix(double[,] old)
-        {
-            double[,] newMatrix = new double[Cities.Length, Cities.Length];
-
-            // Copy the old matrix into the new one
-            Array.Copy(old, 0, newMatrix, 0, old.Length);
-
-            return newMatrix;
-        }
-
-        private List<int> GenerateNewPathSoFar(List<int> oldPSF, int newIndex)
-        {
-            // TODO: Is this not a bug?
-            var psf = new List<int>(oldPSF);
-            psf.Add(newIndex);
-            return psf;
-        }
-
-        private int GetMinColIndex(double[,] matrix, int rowIndex) 
-        {
-            double minValue = double.MaxValue;
-            int minIndex = -1;
-            for (int col = 0; col < matrix.GetLength(0); col++)
-                if (matrix[rowIndex, col] < minValue)
-                {
-                    minValue = matrix[rowIndex, col];
-                    minIndex = col;
-                }
-
-            return minIndex;
-        }
-
-        private int GetMinRowIndex(double[,] matrix, int colIndex)
-        {
-            double minValue = double.MaxValue;
-            int minRowIndex = -1;
-            for (int row = 0; row < matrix.GetLength(0); row++)
-                if (matrix[row, colIndex] < minValue)
-                {
-                    minValue = matrix[row, colIndex];
-                    minRowIndex = row;
-                }
-
-            return minRowIndex;
-        }
-
-        private double BoundaryFunction(double[,] matrix, double bound)
-        {
-            // 1) Reduce the cost Matrix for the state
-            //    - Skip the columns of the cities that are present in the PathSoFar
-            //    - As you reduce, add to the Bound
-            for (int row = 0; row < Cities.Length; row++)
-            {
-                // Find the smallest bound
-                int minColIndex = GetMinColIndex(matrix, row);
-                double minValue;
-                if(minColIndex != -1)
-                    minValue = matrix[row, minColIndex];
-                // This row has no eligible cities
-                else continue;
-
-                // If the column is not all infinity, add the min cost
-                if (minValue < double.MaxValue)
-                {
-                    bound += minValue;
-                    matrix = ReduceCostMatrixRow(matrix, row, minColIndex);
-                }
-            }
-/////////////Test Row Reduction
-            //Console.WriteLine("********************");
-            //for (int i = 0; i < matrix.GetLength(0); i++)
-            //{
-            //    for (int j = 0; j < matrix.GetLength(1); j++)
-            //        Console.Write(String.Format("{0}\t\t\t\t\t\t\t", matrix[i, j]));
-
-            //    Console.WriteLine();
-            //}
-            // TODO: MAKE SURE THIS ISNT TERRIBLE
-            // If columns are not reduced, reduce further
-            //if (!IsMatrixReduced(matrix))
-            //{
-                for (int col = 0; col < Cities.Length; col++)
-                {
-
-                    // Find the smallest bound
-                    int minRowIndex = GetMinRowIndex(matrix, col);
-                    double minValue;
-                    if (minRowIndex != -1)
-                        minValue = matrix[minRowIndex, col];
-                    // This row has no eligible cities
-                    else continue;
-
-                    // If the column is not all infinity, add the min cost
-                    if (minValue < double.MaxValue)
-                    {
-                        bound += minValue;
-                        matrix = ReduceCostMatrixCol(matrix, minRowIndex, col);
-                    }
-                }
-            // }
-//////////////Test Column Reduction
-            //for (int i = 0; i < matrix.GetLength(0); i++)
-            //{
-            //    for (int j = 0; j < matrix.GetLength(1); j++)
-            //        Console.Write(String.Format("{0}\t\t\t\t\t\t\t", matrix[i, j]));
-
-            //    Console.WriteLine();
-            //}
-                    // Now it's finally reduced; return
-                    return bound;
-        }
-
-        private double[,] ReduceCostMatrixRow(double[,] matrix, int row, int col) {
-            int matrixSize = Cities.Length;
-            //var reducedMatrix = new double[matrixSize, matrixSize];
-            //Console.WriteLine("Row: " + row + "     " + "Col: " + col);
-
-            double minValue = matrix[row, col];
-            for (int i = 0; i < matrixSize; i++)
-            {
-                if (matrix[row, i] < double.MaxValue)
-                    matrix[row, i] -= minValue;
-
-                if (matrix[row, i] < 0)
-                {
-                    Console.WriteLine();
-                }
-            }
-
-            // Return reduced matrix
-            return matrix;
-        }
-
-        private double[,] ReduceCostMatrixCol(double[,] matrix, int row, int col)
-        {
-            int matrixSize = Cities.Length;
-            //var reducedMatrix = new double[matrixSize, matrixSize];
-            //Console.WriteLine("Row: " + col + "     " + "Col: " + row);
-
-            double minValue = matrix[row, col];
-            for (int i = 0; i < matrixSize; i++)
-            {
-                if (matrix[i, col] < double.MaxValue)
-                    matrix[i, col] -= minValue;
-
-                if (matrix[i, col] < 0)
-                {
-                    Console.WriteLine();
-                }
-            }
-
-            // Return reduced matrix
-            return matrix;
-        }
-
-        private bool IsMatrixReduced(double[,] matrix) 
-        {
-            // Look for a zero in each col
-            for (int i = 0; i < Cities.Length; i++)
-            {
-                // Reset the zero check
-                bool foundZero = false;
-                for (int j = 0; j < Cities.Length; j++)
-                {
-                    // Check COLS then check ROWS; Confusing logic Warning!
-                    if (matrix[j, i] == 0)
-                        foundZero = true;
-                }
-                // Stop instantly if 0 was not found in a Col
-                if (!foundZero) return false;
-            }
-
-            return true;
-        }
-
-        private bool IsSolution(TSPState state)
-        {
- 
-            if (state.PathSoFar.Count == Cities.Length) 
-            {
-                double totalCost = Cities[state.PathSoFar[Cities.Length - 1]].costToGetTo(Cities[state.PathSoFar[0]])
-                                    + state.Cost;
-
-                // Return true if cost is less
-                return totalCost < BSSF.costOfRoute();
-            }
-
-            return false;
-        }
         #endregion
     }
 }
